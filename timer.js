@@ -4,12 +4,12 @@ const btnR = document.getElementById("reset");
 
 let timer = document.getElementById("timer");
 
-let counter = 2;
+let counter = 900;
 let intervaloID;
 
 btnI.addEventListener("click", () => {
     if (!intervaloID) {
-        intervaloID = setInterval(counterTime, 1000);
+        intervaloID = setInterval(counterTime, 10);
     }
 });
 
@@ -23,7 +23,15 @@ btnR.addEventListener("click", () => {
     timer.textContent = time(counter);
     clearInterval(intervaloID);
     intervaloID = null;
+    result.textContent = "";
+
+    pointsA=0
+    pointsB=0
+    
+    scoreA.textContent = pointsA;
+    scoreB.textContent = pointsB;
 });
+
 
 function counterTime() {
     counter--;
@@ -45,6 +53,10 @@ function counterTime() {
         result.textContent = "🤝 Empate!";
         result.style.color = "gray";
     }
+
+
+    if (counter <= 0) {
+        counter = 0; }
 
     let count = 0;
     let fireworkInterval = setInterval(() => {
