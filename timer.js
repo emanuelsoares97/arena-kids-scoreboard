@@ -9,7 +9,7 @@ let intervaloID;
 
 btnI.addEventListener("click", () => {
     if (!intervaloID) {
-        intervaloID = setInterval(counterTime, 10);
+        intervaloID = setInterval(counterTime, 1000);
     }
 });
 
