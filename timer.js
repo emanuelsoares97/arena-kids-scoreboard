@@ -13,9 +13,10 @@ const scoreRef = ref(database, "score");
 
 // ======= Constants & State =======
 const INITIAL_SECONDS = 10 * 60; // 10 minutos
-let counter    = INITIAL_SECONDS;
-let intervalId = null;
-let lastStatus = null;
+let counter       = INITIAL_SECONDS;
+let intervalId    = null;
+let lastStatus    = null;
+let isOwner       = false;
 
 // ======= Helpers =======
 function formatTime(sec) {
@@ -28,14 +29,40 @@ function updateDisplay(sec) {
   timerElem.textContent = formatTime(sec);
 }
 
-function declareWinner() {
-  const pointsA = parseInt(document.getElementById("scoreA").textContent, 10);
-  const pointsB = parseInt(document.getElementById("scoreB").textContent, 10);
+function clearLocalInterval() {
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+}
 
-  if (pointsA > pointsB) {
+// ======= Timer Logic =======
+function startLocalTimer(pushToDb = false) {
+  clearLocalInterval();  // limpa qualquer intervalo anterior
+  intervalId = setInterval(() => {
+    counter--;
+    updateDisplay(counter);
+
+    // só o dono (quem clicou Start) empurra ao Firebase
+    if (pushToDb) {
+      update(timerRef, { seconds: counter });
+    }
+
+    if (counter <= 0) {
+      clearLocalInterval();
+      declareWinner();
+    }
+  }, 1000);
+}
+
+function declareWinner() {
+  const ptsA = parseInt(document.getElementById("scoreA").textContent, 10);
+  const ptsB = parseInt(document.getElementById("scoreB").textContent, 10);
+
+  if (ptsA > ptsB) {
     resultElem.textContent = "🏆 Equipa A venceu!";
     resultElem.style.color = "blue";
-  } else if (pointsB > pointsA) {
+  } else if (ptsB > ptsA) {
     resultElem.textContent = "🏆 Equipa B venceu!";
     resultElem.style.color = "red";
   } else {
@@ -44,48 +71,28 @@ function declareWinner() {
   }
 
   let confCount = 0;
-  const fireworks = setInterval(() => {
+  const firework = setInterval(() => {
     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-    if (++confCount >= 5) clearInterval(fireworks);
+    if (++confCount >= 5) clearInterval(firework);
   }, 700);
-}
-
-// ======= Core Timer =======
-function startLocalTimer(pushToDb = false) {
-  if (intervalId) return; // já existe um intervalo
-
-  intervalId = setInterval(() => {
-    counter--;
-    updateDisplay(counter);
-
-    if (pushToDb) {
-      // só o cliente host empurra segundos
-      update(timerRef, { seconds: counter });
-    }
-
-    if (counter <= 0) {
-      clearInterval(intervalId);
-      intervalId = null;
-      declareWinner();
-    }
-  }, 1000);
 }
 
 // ======= Event Handlers =======
 startBtn.addEventListener("click", () => {
-  // cliente host inicia o timer
+  isOwner = true;
+  // define estado inicial e passa a dono
   update(timerRef, { seconds: counter, status: "running" });
-  startLocalTimer(true);
-  lastStatus = "running";
-  startBtn.disabled = true;
-  pauseBtn.disabled = false;
 });
 
 pauseBtn.addEventListener("click", () => {
+  isOwner = false;
+  // pausa sem alterar o valor de seconds
   update(timerRef, { status: "paused" });
 });
 
 resetBtn.addEventListener("click", () => {
+  isOwner = false;
+  // reseta timer e pontos globalmente
   update(timerRef, { seconds: INITIAL_SECONDS, status: "reset" });
   set(scoreRef, { A: 0, B: 0 });
 });
@@ -96,19 +103,22 @@ onValue(timerRef, (snap) => {
   if (!data) return;
 
   const { seconds, status } = data;
-  counter = typeof seconds === "number" ? seconds : counter;
-  updateDisplay(counter);
 
+  // atualiza contador local e display
+  if (typeof seconds === "number") {
+    counter = seconds;
+    updateDisplay(counter);
+  }
+
+  // reage apenas a mudanças de estado (running, paused, reset)
   if (status !== lastStatus) {
-    // limpa intervalo ativo
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-    }
+    // limpia qualquer intervalo ativo
+    clearLocalInterval();
 
     if (status === "running") {
-      // ouvintes começam contagem sem push
-      startLocalTimer(false);
+      // inicia contagem local; só dono empurra updates
+      startLocalTimer(isOwner);
+
       startBtn.disabled = true;
       pauseBtn.disabled = false;
     }
@@ -119,13 +129,21 @@ onValue(timerRef, (snap) => {
     }
 
     if (status === "reset") {
+      // reseta display e estado local
       counter = INITIAL_SECONDS;
       updateDisplay(counter);
       resultElem.textContent = "";
+
       startBtn.disabled = false;
       pauseBtn.disabled = true;
     }
 
     lastStatus = status;
+  }
+
+  // garante declarar vencedor se chegar a zero
+  if (counter <= 0) {
+    clearLocalInterval();
+    declareWinner();
   }
 });
