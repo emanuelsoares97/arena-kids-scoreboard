@@ -15,7 +15,7 @@ const statusRef = ref(database, "timer/status");
 let counter = 900;
 let intervaloID = null;
 
-// Formata o tempo (mm:ss)
+// Formata o tempo 
 function formatTime(totalSecs) {
     const min = Math.floor(totalSecs / 60);
     const sec = totalSecs % 60;
@@ -99,10 +99,6 @@ onValue(timerRef, (snapshot) => {
 
     counter = seconds;
     updateDisplay(counter);
-
-    if (status === "running" && !intervaloID) {
-        startLocalTimer();
-    }
 
     if (status === "paused") {
         clearInterval(intervaloID);
