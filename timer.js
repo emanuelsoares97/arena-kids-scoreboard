@@ -1,4 +1,4 @@
-import { db, ref, onValue, set, update } from "./firebase.js";
+import { database, ref, set, onValue, update } from "./firebase.js";
 
 // Elementos
 const btnI = document.getElementById("start");
@@ -8,8 +8,8 @@ const timer = document.getElementById("timer");
 const result = document.getElementById("result");
 
 // Firebase refs
-const timerRef = ref(db, "timer");
-const statusRef = ref(db, "timer/status");
+const timerRef = ref(database, "timer");
+const statusRef = ref(database, "timer/status");
 
 // Estado
 let counter = 900;
