@@ -12,7 +12,7 @@ const timerRef = ref(database, "timer");
 const scoreRef = ref(database, "score");
 
 // ======= Constants & State =======
-const INITIAL_SECONDS = 15 * 60; // 15 minutos
+const INITIAL_SECONDS = 10 * 60; // 15 minutos
 let counter    = INITIAL_SECONDS;
 let intervalId = null;
 let lastStatus = null;
