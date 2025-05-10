@@ -1,22 +1,23 @@
-import { database, ref, set, onValue, update } from "./firebase.js";
+import { database, ref, set, update, onValue } from "./firebase.js";
 
-// ===== DOM Elements =====
+// ======= DOM Elements =======
 const startBtn   = document.getElementById("start");
 const pauseBtn   = document.getElementById("pause");
 const resetBtn   = document.getElementById("reset");
 const timerElem  = document.getElementById("timer");
 const resultElem = document.getElementById("result");
 
-// ===== Firebase References =====
+// ======= Firebase References =======
 const timerRef = ref(database, "timer");
 const scoreRef = ref(database, "score");
 
-// ===== Constants & State =====
-const INITIAL_SECONDS = 15 * 60;  // 15 minutos
+// ======= Constants & State =======
+const INITIAL_SECONDS = 15 * 60; // 15 minutos
 let counter    = INITIAL_SECONDS;
 let intervalId = null;
+let lastStatus = null;
 
-// ===== Helpers =====
+// ======= Helpers =======
 function formatTime(sec) {
   const m = Math.floor(sec / 60).toString().padStart(2, "0");
   const s = (sec % 60).toString().padStart(2, "0");
@@ -25,25 +26,6 @@ function formatTime(sec) {
 
 function updateDisplay(sec) {
   timerElem.textContent = formatTime(sec);
-}
-
-// ===== Core Timer Logic =====
-function startLocalTimer(pushToDb = false) {
-  if (intervalId) return;  // evita múltiplos intervals
-  intervalId = setInterval(() => {
-    counter--;
-    updateDisplay(counter);
-
-    if (pushToDb) {
-      set(timerRef, { seconds: counter, status: "running" });
-    }
-
-    if (counter <= 0) {
-      clearInterval(intervalId);
-      intervalId = null;
-      declareWinner();
-    }
-  }, 1000);
 }
 
 function declareWinner() {
@@ -68,79 +50,73 @@ function declareWinner() {
   }, 700);
 }
 
-// ===== Button Event Listeners =====
+// ======= Event Handlers =======
 startBtn.addEventListener("click", () => {
-  set(timerRef, { seconds: counter, status: "running" });
-  startLocalTimer(true);
-
-  startBtn.disabled = true;
-  pauseBtn.disabled = false;
+  // inicia o timer e notifica o Firebase
+  update(timerRef, { seconds: counter, status: "running" });
 });
 
 pauseBtn.addEventListener("click", () => {
-  if (intervalId) {
-    clearInterval(intervalId);
-    intervalId = null;
-  }
+  // pausa e notifica o Firebase sem alterar segundos
   update(timerRef, { status: "paused" });
-
-  startBtn.disabled = false;
-  pauseBtn.disabled = true;
 });
 
 resetBtn.addEventListener("click", () => {
-  if (intervalId) {
-    clearInterval(intervalId);
-    intervalId = null;
-  }
-
-  counter = INITIAL_SECONDS;
-  updateDisplay(counter);
-  resultElem.textContent = "";
-
-  set(timerRef, { seconds: counter, status: "reset" });
+  // reset global do timer e dos pontos
+  update(timerRef, { seconds: INITIAL_SECONDS, status: "reset" });
   set(scoreRef, { A: 0, B: 0 });
-
-  startBtn.disabled = false;
-  pauseBtn.disabled = true;
 });
 
-// ===== Firebase Listener =====
+// ======= Firebase Listener =======
 onValue(timerRef, (snap) => {
   const data = snap.val();
   if (!data) return;
 
   const { seconds, status } = data;
-  counter = seconds;
-  updateDisplay(seconds);
+  counter = typeof seconds === "number" ? seconds : counter;
+  updateDisplay(counter);
 
-  // Controla UI e intervalos conforme o status
-  if (status === "running") {
-    startLocalTimer(false);
-    startBtn.disabled = true;
-    pauseBtn.disabled = false;
-  } else if (status === "paused") {
+  // Quando o status mudar, ajusta intervalos e botões
+  if (status !== lastStatus) {
+    // limpa qualquer timer ativo
     if (intervalId) {
       clearInterval(intervalId);
       intervalId = null;
     }
-    startBtn.disabled = false;
-    pauseBtn.disabled = true;
-  } else if (status === "reset") {
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-    }
-    resultElem.textContent = "";
-    startBtn.disabled = false;
-    pauseBtn.disabled = true;
-  }
 
-  if (counter <= 0) {
-    if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
+    if (status === "running") {
+      // cliente "ouvinte" inicia contagem local sem push
+      intervalId = setInterval(() => {
+        counter--;
+        updateDisplay(counter);
+        update(timerRef, { seconds: counter });
+
+        if (counter <= 0) {
+          clearInterval(intervalId);
+          intervalId = null;
+          declareWinner();
+        }
+      }, 1000);
+
+      startBtn.disabled = true;
+      pauseBtn.disabled = false;
     }
-    declareWinner();
+
+    if (status === "paused") {
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+    }
+
+    if (status === "reset") {
+      // reset local state
+      counter = INITIAL_SECONDS;
+      updateDisplay(counter);
+      resultElem.textContent = "";
+
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+    }
+
+    lastStatus = status;
   }
 });
