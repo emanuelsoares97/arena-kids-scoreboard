@@ -1,27 +1,25 @@
 import { database, ref, set, onValue, update } from "./firebase.js";
 
-// ======= DOM Elements =======
+// ===== DOM Elements =====
 const startBtn   = document.getElementById("start");
 const pauseBtn   = document.getElementById("pause");
 const resetBtn   = document.getElementById("reset");
 const timerElem  = document.getElementById("timer");
 const resultElem = document.getElementById("result");
 
-// ======= Firebase References =======
+// ===== Firebase References =====
 const timerRef = ref(database, "timer");
 const scoreRef = ref(database, "score");
 
-// ======= Constants & State =======
-const INITIAL_SECONDS = 15 * 60; // 15 minutos
+// ===== Constants & State =====
+const INITIAL_SECONDS = 15 * 60;  // 15 minutos
 let counter    = INITIAL_SECONDS;
 let intervalId = null;
 
-// ======= Helpers =======
-function formatTime(totalSecs) {
-  const m = Math.floor(totalSecs / 60)
-    .toString()
-    .padStart(2, "0");
-  const s = (totalSecs % 60).toString().padStart(2, "0");
+// ===== Helpers =====
+function formatTime(sec) {
+  const m = Math.floor(sec / 60).toString().padStart(2, "0");
+  const s = (sec % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
 }
 
@@ -29,9 +27,9 @@ function updateDisplay(sec) {
   timerElem.textContent = formatTime(sec);
 }
 
-// ======= Core Timer Logic =======
+// ===== Core Timer Logic =====
 function startLocalTimer(pushToDb = false) {
-  if (intervalId) return;          // já existe um intervalo a correr
+  if (intervalId) return;  // evita múltiplos intervals
   intervalId = setInterval(() => {
     counter--;
     updateDisplay(counter);
@@ -70,9 +68,8 @@ function declareWinner() {
   }, 700);
 }
 
-// ======= Button Event Listeners =======
+// ===== Button Event Listeners =====
 startBtn.addEventListener("click", () => {
-  // inicializa no Firebase e passa pushToDb=true
   set(timerRef, { seconds: counter, status: "running" });
   startLocalTimer(true);
 
@@ -97,46 +94,53 @@ resetBtn.addEventListener("click", () => {
     intervalId = null;
   }
 
-  // restabelece o estado inicial do timer
   counter = INITIAL_SECONDS;
   updateDisplay(counter);
   resultElem.textContent = "";
 
-  // actualiza Firebase
   set(timerRef, { seconds: counter, status: "reset" });
-  // faz reset global dos pontos
   set(scoreRef, { A: 0, B: 0 });
 
   startBtn.disabled = false;
   pauseBtn.disabled = true;
 });
 
-// ======= Firebase Listener =======
+// ===== Firebase Listener =====
 onValue(timerRef, (snap) => {
   const data = snap.val();
   if (!data) return;
 
   const { seconds, status } = data;
   counter = seconds;
-  updateDisplay(counter);
+  updateDisplay(seconds);
 
+  // Controla UI e intervalos conforme o status
   if (status === "running") {
-    // apenas exibe, sem empurrar updates
     startLocalTimer(false);
-  } else {
-    // pausa ou reset — limpa intervalo local
+    startBtn.disabled = true;
+    pauseBtn.disabled = false;
+  } else if (status === "paused") {
     if (intervalId) {
       clearInterval(intervalId);
       intervalId = null;
     }
-    if (status === "reset") {
-      resultElem.textContent = "";
+    startBtn.disabled = false;
+    pauseBtn.disabled = true;
+  } else if (status === "reset") {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
     }
+    resultElem.textContent = "";
+    startBtn.disabled = false;
+    pauseBtn.disabled = true;
   }
 
   if (counter <= 0) {
-    clearInterval(intervalId);
-    intervalId = null;
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
     declareWinner();
   }
 });
