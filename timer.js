@@ -1,38 +1,38 @@
 import { database, ref, set, onValue, update } from "./firebase.js";
 
-// Elementos do DOM
-const btnI = document.getElementById("start");
-const btnP = document.getElementById("pause");
-const btnR = document.getElementById("reset");
-const timerElem = document.getElementById("timer");
-const result    = document.getElementById("result");
+// ======= DOM Elements =======
+const startBtn   = document.getElementById("start");
+const pauseBtn   = document.getElementById("pause");
+const resetBtn   = document.getElementById("reset");
+const timerElem  = document.getElementById("timer");
+const resultElem = document.getElementById("result");
 
-// Referência no Firebase
+// ======= Firebase References =======
 const timerRef = ref(database, "timer");
+const scoreRef = ref(database, "score");
 
-// Estado local
-let counter    = 900;   // 15 minutos
-let intervaloID = null;
+// ======= Constants & State =======
+const INITIAL_SECONDS = 15 * 60; // 15 minutos
+let counter    = INITIAL_SECONDS;
+let intervalId = null;
 
-// Formata total de segundos para MM:SS
+// ======= Helpers =======
 function formatTime(totalSecs) {
-  const min = Math.floor(totalSecs / 60);
-  const sec = totalSecs % 60;
-  return `${min.toString().padStart(2, "0")}:${sec
+  const m = Math.floor(totalSecs / 60)
     .toString()
-    .padStart(2, "0")}`;
+    .padStart(2, "0");
+  const s = (totalSecs % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
 }
 
-// Atualiza o display do cronômetro
-function updateDisplay(seconds) {
-  timerElem.textContent = formatTime(seconds);
+function updateDisplay(sec) {
+  timerElem.textContent = formatTime(sec);
 }
 
-// Inicia o timer localmente.
-// Se pushToDb for true, este cliente envia cada tick ao Firebase.
+// ======= Core Timer Logic =======
 function startLocalTimer(pushToDb = false) {
-  if (intervaloID) return;  // evita múltiplos intervals
-  intervaloID = setInterval(() => {
+  if (intervalId) return;          // já existe um intervalo a correr
+  intervalId = setInterval(() => {
     counter--;
     updateDisplay(counter);
 
@@ -41,80 +41,79 @@ function startLocalTimer(pushToDb = false) {
     }
 
     if (counter <= 0) {
-      clearInterval(intervaloID);
-      intervaloID = null;
+      clearInterval(intervalId);
+      intervalId = null;
       declareWinner();
     }
   }, 1000);
 }
 
-// Mostra confetti e anúncio do vencedor
 function declareWinner() {
   const pointsA = parseInt(document.getElementById("scoreA").textContent, 10);
   const pointsB = parseInt(document.getElementById("scoreB").textContent, 10);
 
   if (pointsA > pointsB) {
-    result.textContent = "🏆 Equipa A venceu!";
-    result.style.color = "blue";
+    resultElem.textContent = "🏆 Equipa A venceu!";
+    resultElem.style.color = "blue";
   } else if (pointsB > pointsA) {
-    result.textContent = "🏆 Equipa B venceu!";
-    result.style.color = "red";
+    resultElem.textContent = "🏆 Equipa B venceu!";
+    resultElem.style.color = "red";
   } else {
-    result.textContent = "🤝 Empate!";
-    result.style.color = "gray";
+    resultElem.textContent = "🤝 Empate!";
+    resultElem.style.color = "gray";
   }
 
-  let count = 0;
-  const fireworkInterval = setInterval(() => {
+  let confCount = 0;
+  const fireworks = setInterval(() => {
     confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-    if (++count >= 5) clearInterval(fireworkInterval);
+    if (++confCount >= 5) clearInterval(fireworks);
   }, 700);
 }
 
-// ===== Eventos dos botões =====
-
-// Start: só este cliente “empurra” os ticks ao Firebase
-btnI.addEventListener("click", () => {
+// ======= Button Event Listeners =======
+startBtn.addEventListener("click", () => {
+  // inicializa no Firebase e passa pushToDb=true
   set(timerRef, { seconds: counter, status: "running" });
   startLocalTimer(true);
-  btnI.disabled = true;
-  btnP.disabled = false;
+
+  startBtn.disabled = true;
+  pauseBtn.disabled = false;
 });
 
-// Pause: limpa o intervalo local e notifica o Firebase
-btnP.addEventListener("click", () => {
-  clearInterval(intervaloID);
-  intervaloID = null;
+pauseBtn.addEventListener("click", () => {
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
   update(timerRef, { status: "paused" });
-  btnI.disabled = false;
-  btnP.disabled = true;
+
+  startBtn.disabled = false;
+  pauseBtn.disabled = true;
 });
 
-// Reset: volta ao estado inicial em todos os clientes
-btnR.addEventListener("click", () => {
-  clearInterval(intervaloID);
-  intervaloID = null;
-  counter = 900;
-  result.textContent = "";
+resetBtn.addEventListener("click", () => {
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+
+  // restabelece o estado inicial do timer
+  counter = INITIAL_SECONDS;
   updateDisplay(counter);
+  resultElem.textContent = "";
+
+  // actualiza Firebase
   set(timerRef, { seconds: counter, status: "reset" });
+  // faz reset global dos pontos
+  set(scoreRef, { A: 0, B: 0 });
 
-  
-  
-  pointsA = 0;
-  pointsB = 0;
-
-  scoreA.textContent = pointsA;
-  scoreB.textContent = pointsB;
-
-  btnI.disabled = false;
-  btnP.disabled = true;
+  startBtn.disabled = false;
+  pauseBtn.disabled = true;
 });
 
-// ===== Listener do Firebase =====
-
-onValue(timerRef, (snapshot) => {
-  const data = snapshot.val();
+// ======= Firebase Listener =======
+onValue(timerRef, (snap) => {
+  const data = snap.val();
   if (!data) return;
 
   const { seconds, status } = data;
@@ -122,19 +121,22 @@ onValue(timerRef, (snapshot) => {
   updateDisplay(counter);
 
   if (status === "running") {
-    // este cliente apenas exibe, sem empurrar updates
+    // apenas exibe, sem empurrar updates
     startLocalTimer(false);
-  }
-
-  if (status === "paused" || status === "reset") {
-    clearInterval(intervaloID);
-    intervaloID = null;
-    if (status === "reset") result.textContent = "";
+  } else {
+    // pausa ou reset — limpa intervalo local
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+    if (status === "reset") {
+      resultElem.textContent = "";
+    }
   }
 
   if (counter <= 0) {
-    clearInterval(intervaloID);
-    intervaloID = null;
+    clearInterval(intervalId);
+    intervalId = null;
     declareWinner();
   }
 });
