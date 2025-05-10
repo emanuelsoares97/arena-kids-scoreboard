@@ -12,7 +12,7 @@ const timerRef = ref(database, "timer");
 const scoreRef = ref(database, "score");
 
 // ======= Constants & State =======
-const INITIAL_SECONDS = 10 * 60; // 15 minutos
+const INITIAL_SECONDS = 10 * 60; // 10 minutos
 let counter    = INITIAL_SECONDS;
 let intervalId = null;
 let lastStatus = null;
@@ -50,19 +50,42 @@ function declareWinner() {
   }, 700);
 }
 
+// ======= Core Timer =======
+function startLocalTimer(pushToDb = false) {
+  if (intervalId) return; // já existe um intervalo
+
+  intervalId = setInterval(() => {
+    counter--;
+    updateDisplay(counter);
+
+    if (pushToDb) {
+      // só o cliente host empurra segundos
+      update(timerRef, { seconds: counter });
+    }
+
+    if (counter <= 0) {
+      clearInterval(intervalId);
+      intervalId = null;
+      declareWinner();
+    }
+  }, 1000);
+}
+
 // ======= Event Handlers =======
 startBtn.addEventListener("click", () => {
-  // inicia o timer e notifica o Firebase
+  // cliente host inicia o timer
   update(timerRef, { seconds: counter, status: "running" });
+  startLocalTimer(true);
+  lastStatus = "running";
+  startBtn.disabled = true;
+  pauseBtn.disabled = false;
 });
 
 pauseBtn.addEventListener("click", () => {
-  // pausa e notifica o Firebase sem alterar segundos
   update(timerRef, { status: "paused" });
 });
 
 resetBtn.addEventListener("click", () => {
-  // reset global do timer e dos pontos
   update(timerRef, { seconds: INITIAL_SECONDS, status: "reset" });
   set(scoreRef, { A: 0, B: 0 });
 });
@@ -76,28 +99,16 @@ onValue(timerRef, (snap) => {
   counter = typeof seconds === "number" ? seconds : counter;
   updateDisplay(counter);
 
-  // Quando o status mudar, ajusta intervalos e botões
   if (status !== lastStatus) {
-    // limpa qualquer timer ativo
+    // limpa intervalo ativo
     if (intervalId) {
       clearInterval(intervalId);
       intervalId = null;
     }
 
     if (status === "running") {
-      // cliente "ouvinte" inicia contagem local sem push
-      intervalId = setInterval(() => {
-        counter--;
-        updateDisplay(counter);
-        update(timerRef, { seconds: counter });
-
-        if (counter <= 0) {
-          clearInterval(intervalId);
-          intervalId = null;
-          declareWinner();
-        }
-      }, 1000);
-
+      // ouvintes começam contagem sem push
+      startLocalTimer(false);
       startBtn.disabled = true;
       pauseBtn.disabled = false;
     }
@@ -108,11 +119,9 @@ onValue(timerRef, (snap) => {
     }
 
     if (status === "reset") {
-      // reset local state
       counter = INITIAL_SECONDS;
       updateDisplay(counter);
       resultElem.textContent = "";
-
       startBtn.disabled = false;
       pauseBtn.disabled = true;
     }
