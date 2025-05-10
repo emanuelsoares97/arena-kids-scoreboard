@@ -88,6 +88,12 @@ btnR.addEventListener("click", () => {
     result.textContent = "";
     updateDisplay(counter);
     set(timerRef, { seconds: counter, status: "reset" });
+
+    pointsA = 0;
+    pointsB = 0;
+
+    scoreA.textContent = pointsA;
+    scoreB.textContent = pointsB;
 });
 
 // Escuta mudanças no Firebase
