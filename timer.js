@@ -100,8 +100,12 @@ btnR.addEventListener("click", () => {
   set(timerRef, { seconds: counter, status: "reset" });
 
   
-  document.getElementById("scoreA").textContent = "0";
-  document.getElementById("scoreB").textContent = "0";
+  
+  pointsA = 0;
+  pointsB = 0;
+
+  scoreA.textContent = pointsA;
+  scoreB.textContent = pointsB;
 
   btnI.disabled = false;
   btnP.disabled = true;
