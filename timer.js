@@ -1,47 +1,51 @@
+import { db, ref, onValue, set, update } from "./firebase.js";
+
+// Elementos
 const btnI = document.getElementById("start");
 const btnP = document.getElementById("pause");
 const btnR = document.getElementById("reset");
+const timer = document.getElementById("timer");
+const result = document.getElementById("result");
 
-let timer = document.getElementById("timer");
+// Firebase refs
+const timerRef = ref(db, "timer");
+const statusRef = ref(db, "timer/status");
 
+// Estado
 let counter = 900;
-let intervaloID;
+let intervaloID = null;
 
-btnI.addEventListener("click", () => {
-    if (!intervaloID) {
-        intervaloID = setInterval(counterTime, 1000);
-    }
-});
+// Formata o tempo (mm:ss)
+function formatTime(totalSecs) {
+    const min = Math.floor(totalSecs / 60);
+    const sec = totalSecs % 60;
+    return `${min.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+}
 
-btnP.addEventListener("click", () => {
-    clearInterval(intervaloID);
-    intervaloID = null;
-});
+// Atualiza o cronômetro na tela
+function updateDisplay(seconds) {
+    timer.textContent = formatTime(seconds);
+}
 
-btnR.addEventListener("click", () => {
-    counter = 900;
-    timer.textContent = time(counter);
-    clearInterval(intervaloID);
-    intervaloID = null;
-    result.textContent = "";
+// Lógica de contagem regressiva
+function startLocalTimer() {
+    if (intervaloID) return;
+    intervaloID = setInterval(() => {
+        counter--;
+        set(timerRef, { seconds: counter, status: "running" });
 
-    pointsA=0
-    pointsB=0
-    
-    scoreA.textContent = pointsA;
-    scoreB.textContent = pointsB;
-});
+        if (counter <= 0) {
+            clearInterval(intervaloID);
+            intervaloID = null;
+            declareWinner();
+        }
+    }, 1000);
+}
 
-
-function counterTime() {
-    counter--;
-    timer.textContent = time(counter);
-
-    if (counter <= 0) {
-    clearInterval(intervaloID);
-    intervaloID = null;
-
-    const result = document.getElementById("result");
+// Declara o vencedor com base nos pontos
+function declareWinner() {
+    const pointsA = parseInt(document.getElementById("scoreA").textContent);
+    const pointsB = parseInt(document.getElementById("scoreB").textContent);
 
     if (pointsA > pointsB) {
         result.textContent = "🏆 Equipa A venceu!";
@@ -54,32 +58,66 @@ function counterTime() {
         result.style.color = "gray";
     }
 
-
-    if (counter <= 0) {
-        counter = 0; }
-
+    // Confetti
     let count = 0;
     let fireworkInterval = setInterval(() => {
-        confetti({
-            particleCount: 100,
-            spread: 70,
-            origin: { y: 0.6 }
-        });
-
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
         count++;
-        if (count >= 5) {
-            clearInterval(fireworkInterval);
-        }
-    }, 700); // ms entre cada explosao
-}}
-
-
-function time(totalSecs) {
-    let min = Math.floor(totalSecs / 60);
-    let sec = totalSecs % 60;
-
-    min = min < 10 ? "0" + min : min;
-    sec = sec < 10 ? "0" + sec : sec;
-
-    return `${min}:${sec}`;
+        if (count >= 5) clearInterval(fireworkInterval);
+    }, 700);
 }
+
+// Botão Start
+btnI.addEventListener("click", () => {
+    set(timerRef, { seconds: counter, status: "running" });
+    startLocalTimer();
+});
+
+// Botão Pause
+btnP.addEventListener("click", () => {
+    clearInterval(intervaloID);
+    intervaloID = null;
+    update(timerRef, { status: "paused" });
+});
+
+// Botão Reset
+btnR.addEventListener("click", () => {
+    clearInterval(intervaloID);
+    intervaloID = null;
+    counter = 900;
+    result.textContent = "";
+    updateDisplay(counter);
+    set(timerRef, { seconds: counter, status: "reset" });
+});
+
+// Escuta mudanças no Firebase
+onValue(timerRef, (snapshot) => {
+    const data = snapshot.val();
+    if (!data) return;
+
+    const { seconds, status } = data;
+
+    counter = seconds;
+    updateDisplay(counter);
+
+    if (status === "running" && !intervaloID) {
+        startLocalTimer();
+    }
+
+    if (status === "paused") {
+        clearInterval(intervaloID);
+        intervaloID = null;
+    }
+
+    if (status === "reset") {
+        clearInterval(intervaloID);
+        intervaloID = null;
+        result.textContent = "";
+    }
+
+    if (counter <= 0) {
+        clearInterval(intervaloID);
+        intervaloID = null;
+        declareWinner();
+    }
+});
